@@ -12,9 +12,6 @@ library(circlize)
 library(dplyr)
 library(maftools)
 library(ggsci)
-setwd("...")
-
-
 maf_snv <- read.csv("....csv")
 clin <- read.csv("....csv", fileEncoding = "GBK")
 brca_all <- read.maf(maf_snv,clin)
@@ -23,11 +20,6 @@ brca_nonsynonymous_count[is.na(brca_nonsynonymous_count)] = 0
 brca_nonsynonymous_count$TMB = round(brca_nonsynonymous_count$Variants/2.134, digits = 1)
 TMB <- brca_nonsynonymous_count[,c(1,32)]
 brca_clin <- merge(clin,TMB,by="Tumor_Sample_Barcode",all= T)#add TMB
-
-################################################################################
-##1.SNV
-################################################################################
-##read.maf
 maf <- read.maf(maf_snv)
 ##change name of Variant_Classification
 maf@data$Variant_Classification <- str_replace_all(maf_308@data$Variant_Classification,
@@ -35,153 +27,95 @@ maf@data$Variant_Classification <- str_replace_all(maf_308@data$Variant_Classifi
                                                          "Nonstop_Mutation" = 'Nonstop', "Splice_Site" = 'Splicing',
                                                          "Frame_Shift_Del" = 'Frameshift', "Frame_Shift_Ins" = 'Frameshift',
                                                          "In_Frame_Del" = 'Inframe', "In_Frame_Ins" = 'Inframe'))
-##maf to dataframe
 maf <- survtype::maf2matrix(maf@data)  
-
-#Top10
 SNV <- maf[c("CDH1","PIK3CA","TP53","ARID1A","ERBB2","KMT2D","GATA3","PKD1","RYR2","TBX3","MAP1A","CBFB","USH2A","KIF26B","RUNX1"),]
-
-################################################################################
-##2.HGVSp
-################################################################################
 brca_HGVSp = paste0(maf_snv$Hugo_Symbol, "(", maf_snv$aaChange, ")")
 brca_HGVSp_maf = cbind(brca_HGVSp, maf_snv)
 colnames(brca_HGVSp_maf)[2] = "Hugo_Symbol_original"
 colnames(brca_HGVSp_maf)[1] = "Hugo_Symbol"
-
 brca_HGVSp_maf<- read.maf(brca_HGVSp_maf)
-
 brca_HGVSp_maf@data$Variant_Classification <- str_replace_all(brca_HGVSp_maf@data$Variant_Classification,
                                                               c("Missense_Mutation" = 'Missense', "Nonsense_Mutation" = 'Nonsense',
                                                                 "Nonstop_Mutation" = 'Nonstop', "Splice_Site" = 'Splicing',
                                                                 "Frame_Shift_Del" = 'Frameshift', "Frame_Shift_Ins" = 'Frameshift',
                                                                 "In_Frame_Del" = 'Inframe', "In_Frame_Ins" = 'Inframe'))
-
 brca_HGVSp_mat<- survtype::maf2matrix(brca_HGVSp_maf@data) 
-##Top5
 HGVSp <- brca_HGVSp_mat[c(1,2,4,6,7),]
-
-################################################################################
-##3.PATHWAY
-################################################################################
-##loading pathway_gene
 pathway_genes <- read.csv("....csv")
-##merge maf and pathway_gene
 FUSCC_pathway_maf=merge(maf_snv,pathway_genes,by="Hugo_Symbol",all=TRUE)
-##revise colnames
 colnames(FUSCC_pathway_maf)[1]="Hugo_Symbol_gene"
 colnames(FUSCC_pathway_maf)[36]="Hugo_Symbol"
 FUSCC_pathway_maf$Hugo_Symbol[is.na(FUSCC_pathway_maf$Hugo_Symbol)]="Other"
-##read.maf
 FUSCC_pathway_maf <- read.maf(FUSCC_pathway_maf)
-
-##modify the name of vatiant type
 FUSCC_pathway_maf@data$Variant_Classification <- str_replace_all(FUSCC_pathway_maf@data$Variant_Classification,
                                                                  c("Missense_Mutation" = 'Missense', "Nonsense_Mutation" = 'Nonsense',
                                                                    "Nonstop_Mutation" = 'Nonstop', "Splice_Site" = 'Splicing',
                                                                    "Frame_Shift_Del" = 'Frameshift', "Frame_Shift_Ins" = 'Frameshift',
                                                                    "In_Frame_Del" = 'Inframe', "In_Frame_Ins" = 'Inframe'))
-##maf transform into matrix
 FUSCC_pathway_maf <- survtype::maf2matrix(FUSCC_pathway_maf@data) 
-##Top5
 pathway <- FUSCC_pathway_maf[c(2:6),]
-
-################################################################################
-##4. CNV
-################################################################################
 maf_cnv <- read.csv("...csv",row.names=1)
 colnames(maf_cnv) <- gsub("X","",colnames(maf_cnv))
-
 maf_cnv[is.na(maf_cnv) ] <- "No"
 maf_cnv[maf_cnv  == "0"] <- ""
 maf_cnv[maf_cnv  == "-1"] <- "Del"
 maf_cnv [maf_cnv  == "1"] <- "Amp"
 maf_cnv [is.na(maf_cnv )] <- ""
-
 CNV <- maf_cnv[c("ERBB2","MYC","NBN","CCND1","MCL1"),]
-
-################################################################################
-##5.Start drawing
-################################################################################
-
 col = c("Splicing" = "#6b4694", "Missense" = "#4d93cd", "Nonsense" = "#e63a3a", "Frameshift" = '#fab71b', "Inframe" = "#ecd71e",
         "Nonstop" = '#ab5b9e', "Translation_Start_Site" = '#018b38',"Amp" = "#e21e27", "Del" = "#3b53a5")
-
-#Set the size, background and color of each grid
 alter_fun = list(
   background = function(x, y, w, h) {
     grid.rect(x, y, w-unit(1.5, "pt"), h-unit(4, "pt"),
               gp = gpar(fill = "#CCCCCC", col = NA))
   },
-  # small purple
   Splicing = function(x, y, w, h) {
     grid.rect(x, y, w-unit(0.4, "pt"), h*0.67,
               gp = gpar(fill = col["Splicing"], col = NA))
   },
-  # small blue
   Missense = function(x, y, w, h) {
     grid.rect(x, y, w-unit(0.4, "pt"), h*0.33,
               gp = gpar(fill = col["Missense"], col = NA))
   },
-  # small red
   Nonsense = function(x, y, w, h) {
     grid.rect(x, y, w-unit(0.4, "pt"), h*0.33,
               gp = gpar(fill = col["Nonsense"], col = NA))
   },
-  # small orange
   Frameshift = function(x, y, w, h) {
     grid.rect(x, y, w-unit(0.4, "pt"), h*0.33,
               gp = gpar(fill = col["Frameshift"], col = NA))
   },
-  # small yellow
   Inframe = function(x, y, w, h) {
     grid.rect(x, y, w-unit(0.4, "pt"), h*0.33,
               gp = gpar(fill = col["Inframe"], col = NA))
   },
-  # small purple
   Nonstop = function(x, y, w, h) {
     grid.rect(x, y, w-unit(0.4, "pt"), h*0.33,
               gp = gpar(fill = col["Nonstop"], col = NA))
   },
-  # small green
   Translation_Start_Site = function(x, y, w, h) {
     grid.rect(x, y, w-unit(0.4, "pt"), h*0.33,
               gp = gpar(fill = col["Translation_Start_Site"], col = NA))
   },
-  # small red
   Amp = function(x, y, w, h) {
     grid.rect(x, y, w-unit(0.4, "pt"), h*0.33,
               gp = gpar(fill = col["Amp"], col = NA))
   },
-  # small blue
   Del = function(x, y, w, h) {
     grid.rect(x, y, w-unit(0.4, "pt"), h*0.33,
               gp = gpar(fill = col["Del"], col = NA))
   }
 )
-
-# figure legend
 heatmap_legend_param <- list(title = "Variant Type", at = c("Splicing", "Missense", 'Nonsense', 'Frameshift', 'Inframe', "Nonstop", "Translation_Start_Site","Amp", "Del","No"),
                              labels = c("Splicing", "Missense", 'Nonsense', 'Frameshift', 'Inframe', "Nonstop", "Translation_Start_Site","Amplification", "Deletion","No"))
-
-# figure legend_age
 col_fun_age <- colorRamp2(c(28, 55, 100), c('#ecf3e4', '#9ec27d', '#489205'))
-
-# figure legend_ki67
 col_fun_ki67 <- colorRamp2(c(0,50,100), c('#E7EAF6', '#7985CB','#3948AB'))
-
-# merge df and sort
 HGVSp <- HGVSp[,colnames(maf_308)]
 pathway <- pathway[,colnames(maf_308)]
-#CNV <- CNV[,colnames(maf_4079)]
 Maf_mat <- rbind(SNV,HGVSp,pathway) 
-
-# Ensure that maf is ordered the same as the clinical data matrix
 rownames(brca_clin) <- brca_clin$Tumor_Sample_Barcode
 brca_clin <- brca_clin[colnames(Maf_mat),]
 Maf_mat <- as.matrix(Maf_mat)
-
-# drawing landscape
 FUSCC_landscape <- oncoPrint(Maf_mat, alter_fun = alter_fun, col = col, show_pct = T, pct_side = 'right',
                              column_title = '', heatmap_legend_param = heatmap_legend_param,
                              row_names_side = "left", show_column_names = F, remove_empty_columns = F,
@@ -192,9 +126,7 @@ FUSCC_landscape <- oncoPrint(Maf_mat, alter_fun = alter_fun, col = col, show_pct
                              top_annotation = HeatmapAnnotation(TMB=anno_points(brca_clin$TMB, size = unit(1, 'mm'), border = T, ylim = c(0, 60), height = unit(1, 'cm'),
                                                                                 axis_param = list(at = seq(0, 60, by = 30), labels = seq(0,60, by = 30))),
                                                                 IHC_Subtype = brca_clin$Subtype, 
-                                                                
-                                                                Age.at.surgery = brca_clin$Patient_Dx_Age,
-                                                               
+                                                                Age.at.surgery = brca_clin$Patient_Dx_Age,                                                               
                                                                 Ki67 = brca_clin$Sample_KI67_Index, 
                                                                 Menopausal_Status = brca_clin$Menopausal_Status,
                                                                 Sample_type = brca_clin$Sample_Group,
@@ -207,16 +139,14 @@ FUSCC_landscape <- oncoPrint(Maf_mat, alter_fun = alter_fun, col = col, show_pct
                                                                                 Recurrence_metastasis = FALSE, Sample_site = FALSE),
                                                                 col = list(
                                                                            IHC_Subtype = c('HR+/HER2-' = '#0072B5', 'HR-/HER2-' = '#E18727', 
-                                                                                           'HR+/HER2+' = '#20854E', 'HR-/HER2+' = '#BC3C29'), #New England Journal of Medicine color scheme
+                                                                                           'HR+/HER2+' = '#20854E', 'HR-/HER2+' = '#BC3C29'), 
                                                                            Age.at.surgery = col_fun_age,
-                                                                           
                                                                            Ki67 = col_fun_ki67,
                                                                            Menopausal_Status = c("Pre" = "#ed2891","Post" = "#CCCCCC"),
-                                                                           Sample_type = c('Surgery' = "#709AE1","NAC" = "#FED439","Advanced" = "#FD7446"),#simpsons color scheme
+                                                                           Sample_type = c('Surgery' = "#709AE1","NAC" = "#FED439","Advanced" = "#FD7446"),
                                                                            Recurrence_metastasis = c('YES' = '#000000','NO' = '#CCCCCC'),
                                                                            Sample_site = c('Primary' = '#CCCCCC','Metastasis' = '#000000'))),
                              row_split =  factor(c(rep('SNV',15), rep('HGVSp',5),rep('pathway',5)),levels = c('SNV','HGVSp','pathway')),
-                             # Different types of groupings
                              column_split = factor(brca_clin$Subtype, levels = c('HR+/HER2-','HR-/HER2-','HR+/HER2+','HR-/HER2+')),
                              gap = unit(0.1, 'inch'), use_raster = F)
 
