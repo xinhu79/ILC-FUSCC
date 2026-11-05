@@ -1,0 +1,37 @@
+library(paletteer) 
+library(export)
+library(ggpubr)
+exp.fpkm.TT <- read.csv("....csv", row.names = 1)
+cnv <- read.csv("....csv", row.names = 1)
+exp.fpkm.TT.log = log2(exp.fpkm.TT +1)
+exp.fpkm.TT.log.SD2k = exp.fpkm.TT.log[order(apply(exp.fpkm.TT.log,1,sd),decreasing = T)[1:2000],] 
+cnv = as.data.frame(t(cnv))
+exp.fpkm.TT.log.SD2k = as.data.frame(t(exp.fpkm.TT.log.SD2k))
+all(rownames(cnv) == rownames(exp.fpkm.TT.log.SD2k)) 
+library(SNFtool)
+library(tidyr)
+library(CancerSubtypes)
+K = 15;		
+alpha = 0.5;  	
+T = 20; 	
+cnv.m.n = standardNormalization(cnv)
+exp.fpkm.m.n = standardNormalization(exp.fpkm.TT.log.SD2k)
+dist_cnv = (SNFtool::dist2(cnv.m.n,cnv.m.n))
+dist_exp = (SNFtool::dist2(as.matrix(exp.fpkm.m.n),as.matrix(exp.fpkm.m.n)))
+W_cnv = affinityMatrix(dist_cnv, K, alpha)
+W_exp = affinityMatrix(dist_exp, K, alpha)
+W = SNF(list(W_cnv, W_exp), K, T)
+library(Spectrum)
+library(plot3D)
+r <- Spectrum(W,method =1,diffusion = TRUE ,kerneltype = "stsc",NN = 20)
+C = 4		
+set.seed(1234)
+group = spectralClustering(W, C) 	# the final subtypes information
+names(group) <- row.names(exp.fpkm.m.n)
+SNF_Cluster  <- group
+set.seed(321)
+displayClustersWithHeatmap(W = log(W), group = SNF_Cluster, 
+                           col = colorRampPalette(c("#404044","#4F4F4F","#595959","#7F7F7F","#CCCCCC","#D9D9D9","#ECECEC","#FAFAFD"))(20),
+                           labRow = F,labCol = F) 
+palette4silhou = c("#3D76AE","#53AD4A" ,"#EDAB3C" ,"#C3392A",rainbow(n = 5))
+plot(sil, col = palette4silhou[1:C])
