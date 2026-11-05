@@ -1,0 +1,42 @@
+library(tidyverse)
+library(DESeq2)
+library(pheatmap)
+library(RColorBrewer)
+library(clusterProfiler)
+gmtfile <- "....gmt"
+geneset <- read.gmt(gmtfile)
+write.csv(geneset,"geneset.csv")
+expr_data <- read.csv("....csv", row.names = 1) 
+group_info <- read.csv("id_group.csv")  
+geneset_genes <- read.csv("....csv", header = TRUE,row.names = 1)  
+colnames(geneset_genes) <- c("Pathway","GeneSymbol")
+colnames(group_info) <- c("PatientID", "Group")
+rownames(group_info) <- group_info$PatientID
+group_info$PatientID <- NULL
+group_info$Group <- factor(group_info$Group, levels = c("AA", "BB", "CC", "DD")) 
+geneset_expr <- expr_data[rownames(expr_data) %in% geneset_genes$GeneSymbol, ]
+all(rownames(group_info) == colnames(geneset_expr)) 
+log_fpkm <- log2(geneset_expr + 1) 
+group_info <- read.csv("id_group.csv") 
+Group = group_info[order(group_info$Group), ]
+tab = table(Group[, 2])
+AA = tab[1]
+BB = tab[2]
+CC = tab[3]
+DD = tab[4]
+Type = c(rep("AA", AA), rep("BB", BB), rep("CC", CC), rep("DD", DD))
+colnames(log_fpkm) = Group[, 1]
+names(Type) = colnames(log_fpkm)
+Type = as.data.frame(Type)
+ann_colors = list(Type = c(AA = "#F6511D", BB = "#FFB400", CC = "#45B9EB", DD = "#7FB800"))
+color_vector <- rev(colorRampPalette(brewer.pal(9, "RdBu"))(100))
+breaks <- seq(-2, 2, length.out = length(color_vector) + 1)
+p1 <- pheatmap(log_fpkm, 
+         scale = "row",
+         annotation = Type, 
+         annotation_colors = ann_colors,
+         color = color_vector,
+         breaks = breaks,
+         cluster_rows = FALSE, cluster_cols = FALSE,
+         show_rownames = TRUE, fontsize_row = 6)
+p1
