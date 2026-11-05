@@ -1,0 +1,131 @@
+library(tidyverse)
+library(DESeq2)
+library(pheatmap)
+library(RColorBrewer)
+library(clusterProfiler)
+gmtfile <- "....gmt"
+geneset <- read.gmt(gmtfile)
+write.csv(geneset,"geneset.csv")
+expr_data <- read.csv("....csv", row.names = 1) 
+group_info <- read.csv("id_group.csv")  
+geneset_genes <- read.csv("....csv", header = TRUE,row.names = 1)  
+colnames(geneset_genes) <- c("Pathway","GeneSymbol")
+colnames(group_info) <- c("PatientID", "Group")
+rownames(group_info) <- group_info$PatientID
+group_info$PatientID <- NULL
+group_info$Group <- factor(group_info$Group, levels = c("AA", "BB", "CC", "DD")) 
+geneset_expr <- expr_data[rownames(expr_data) %in% geneset_genes$GeneSymbol, ]
+all(rownames(group_info) == colnames(geneset_expr)) 
+log_fpkm <- log2(geneset_expr + 1) 
+group_info <- read.csv("id_group.csv") 
+Group = group_info[order(group_info$Group), ]
+tab = table(Group[, 2])
+AA = tab[1]
+BB = tab[2]
+CC = tab[3]
+DD = tab[4]
+Type = c(rep("AA", AA), rep("BB", BB), rep("CC", CC), rep("DD", DD))
+colnames(log_fpkm) = Group[, 1]
+names(Type) = colnames(log_fpkm)
+Type = as.data.frame(Type)
+ann_colors = list(Type = c(AA = "#F6511D", BB = "#FFB400", CC = "#45B9EB", DD = "#7FB800"))
+color_vector <- rev(colorRampPalette(brewer.pal(9, "RdBu"))(100))
+breaks <- seq(-2, 2, length.out = length(color_vector) + 1)
+p1 <- pheatmap(log_fpkm, 
+         scale = "row",
+         annotation = Type, 
+         annotation_colors = ann_colors,
+         color = color_vector,
+         breaks = breaks,
+         cluster_rows = FALSE, cluster_cols = FALSE,
+         show_rownames = TRUE, fontsize_row = 6)
+p1
+lapply(c('clusterProfiler','enrichplot','patchwork'),
+       function(x) {library(x, character.only = T)})
+deg = read.csv("....csv", header = TRUE, row.names = 1, sep = ",")
+head(deg)
+logFC_t=0.8
+deg$g=ifelse(deg$P.Value>0.05,'stable',
+             ifelse( deg$logFC > logFC_t,'UP',
+                     ifelse( deg$logFC < -logFC_t,'DOWN','stable') )
+)
+table(deg$g)
+deg$symbol=rownames(deg)
+df <- bitr(unique(deg$symbol), fromType = "SYMBOL",
+           toType = c( "ENTREZID"),
+           OrgDb = org.Hs.eg.db)
+DEG=deg
+DEG=merge(DEG,df,by.y='SYMBOL',by.x='symbol')
+data_all_sort <- DEG %>% 
+  arrange(desc(logFC))
+geneList = data_all_sort$logFC 
+names(geneList) <- data_all_sort$ENTREZID
+head(geneList)
+gene_list_sorted <- sort(geneList, decreasing = TRUE)
+gsea_res <- clusterProfiler::gseGO(
+  geneList = gene_list_sorted,
+  ont = "CC", 
+  OrgDb = org.Hs.eg.db,
+  eps = 1e-50,
+  keyType = "ENTREZID",
+  pvalueCutoff = 0.05,
+  pAdjustMethod = "BH", 
+  verbose = FALSE
+)
+goresult <- data.frame(gsea_res@result)
+sim_res <- simplify(gsea_res, 
+                    cutoff = 0.7, 
+                    by = "p.adjust",
+                    measure = "Wang",
+                    semData = NULL) 
+nrow(sim_res@result)
+gosim_res <- data.frame(sim_res@result)
+pathway_genes <- lapply(sim_res@result$ID, function(go_id){
+  genes <- strsplit(sim_res@result[sim_res@result$ID == go_id, "core_enrichment"], "/")[[1]]
+  unique(genes)
+})
+names(pathway_genes) <- sim_res@result$ID
+jaccard_matrix <- matrix(nrow = length(pathway_genes), ncol = length(pathway_genes))
+rownames(jaccard_matrix) <- names(pathway_genes)
+colnames(jaccard_matrix) <- names(pathway_genes)
+for(i in 1:(length(pathway_genes)-1)){
+  for(j in (i+1):length(pathway_genes)){
+    a <- length(intersect(pathway_genes[[i]], pathway_genes[[j]]))
+    b <- length(union(pathway_genes[[i]], pathway_genes[[j]]))
+    jaccard_matrix[i,j] <- a/b
+  }
+}
+edges <- as.data.frame(which(jaccard_matrix > 0.1 & upper.tri(jaccard_matrix), arr.ind = TRUE)) %>%
+  mutate(
+    from = rownames(jaccard_matrix)[row],
+    to = colnames(jaccard_matrix)[col],
+    weight = jaccard_matrix[cbind(row, col)]
+  ) %>%
+  as.data.frame() %>%  # Ensure it's a data frame
+  dplyr::select(from, to, weight) %>%
+  filter(weight > 0.05) 
+data <- data.frame(
+  Symbol = names(geneList),
+  logfc = geneList)
+gosim_res <- gosim_res %>% 
+  dplyr::arrange(qvalue) %>%
+  head(20) %>%
+  dplyr::mutate(log10P = -log10(pvalue)) %>%
+  separate_rows(core_enrichment, sep = "/") %>% 
+  left_join(data, by = c("core_enrichment" = "Symbol")) %>%
+  dplyr::mutate(Description = factor(Description, levels = rev(unique(Description))))
+custom_colors <- colorRampPalette(c("#8075ad", "#f5edf0","#f5da73", "#ffb800"))(100)
+p <- ggplot(gosim_res, aes(x = logfc, y = Description, fill = log10P)) +
+  geom_density_ridges(alpha = 0.7, scale = 1.5) +
+  labs(x = "Log2FoldChange", y = "") +
+  scale_fill_gradientn(colors = custom_colors,name = "-Log10(pvalue)") +
+  theme(
+    panel.background = element_blank(),
+    panel.grid = element_blank(),
+    panel.border = element_rect(colour = "black", fill = NA, linewidth = 1),
+    axis.text = element_text(color = "black", size = 12),
+    axis.title = element_text(size = 12),
+    legend.text = element_text(size = 12),
+    legend.title = element_text(size = 12)
+  )
+p
