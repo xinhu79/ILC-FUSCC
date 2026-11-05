@@ -1,0 +1,59 @@
+BiocManager::install("TCGAbiolinks")
+library(TCGAbiolinks)
+library(maftools)
+BiocManager::install("trackViewer")
+library(trackViewer)
+library(RColorBrewer)
+library(data.table)
+BiocManager::install("GenomicRanges")
+library(GenomicRanges)
+maf_snv <- read.csv("....csv")
+newdf<-maf_snv[!is.na(maf_snv$aaChange),]
+gff = readRDS(file = system.file('extdata', 'protein_domains.RDs', package = 'maftools'))
+gff <- as.data.table(gff)
+cdh1_refseq_ids <- gff[HGNC %in% "CDH1"]$refseq.ID
+print(cdh1_refseq_ids)
+refseqid <- "NM_004360"
+protein_inform <- gff[HGNC %in% "CDH1"][refseq.ID == refseqid,]
+extractpos <- function(maf_aachange){
+  prot.spl = strsplit(x = as.character(maf_aachange), split = '.', fixed = TRUE)
+  prot.conv = sapply(sapply(prot.spl, function(x) x[length(x)]), '[', 1)
+  pos = gsub(pattern = 'Ter.*', replacement = '',x = prot.conv)
+  pos = gsub(pattern = '[[:alpha:]]', replacement = '', x = pos)
+  pos = gsub(pattern = '\\*$', replacement = '', x = pos)
+  pos = gsub(pattern = '^\\*', replacement = '', x = pos)
+  pos = gsub(pattern = '\\*.*', replacement = '', x = pos)
+  pos = as.numeric(sapply(X = strsplit(x = pos, split = '_', fixed = TRUE), FUN = function(x) x[1])) 
+  aa = paste0(unlist(regmatches(maf_aachange, gregexpr("p[.].[0-9]+",maf_aachange))),"X")
+  mutpos = data.frame(position = pos, mutation = maf_aachange, aa = aa, stringsAsFactors = F)
+  return(mutpos[order(mutpos$pos),])
+}
+unique(newdf[newdf$Hugo_Symbol == "CDH1", ]$aaChange)
+filtered_newdf <- newdf[newdf$Hugo_Symbol == "CDH1" & !is.na(newdf$aaChange) & grepl("^p\\.", newdf$aaChange), ]
+pos <- extractpos(filtered_newdf[filtered_newdf$Hugo_Symbol=="CDH1",]$aaChange)
+head(pos)
+nrpos <- pos[!duplicated(pos),]
+rownames(nrpos) <- nrpos$mutation
+nrpos$rate <- 1
+nrpos[names(table(pos$mutation)),]$rate <-table(pos$mutation)
+head(nrpos)  
+library(data.table)
+filtered_newdf <- as.data.table(filtered_newdf)
+nrpos <- as.data.table(nrpos)
+filtered_newdf$position <- extractpos(filtered_newdf$aaChange)$position
+nrpos <- merge(nrpos, filtered_newdf[, .(position, Variant)], by = "position", all.x = TRUE)
+features <- GRanges("chr1", IRanges(start=protein_inform$Start,end=protein_inform$End,names=protein_inform$Description))
+features$height <- 0.07 #domain box高
+length(features)
+features$fill <- brewer.pal(9, "Set1")[1:length(features)] #domain box颜色  
+#sample.gr <- GRanges("chr1", IRanges(nrpos$position, width=1, names=nrpos$mutation))
+sample.gr <- GRanges("chr1", IRanges(nrpos$position, width=1))
+sample.gr$label.parameter.rot <- 90 
+sample.gr$label <- as.character(nrpos$rate) 
+sample.gr$label.col <- "white" 
+sample.gr$color <-sample.gr$border <- brewer.pal(9,"Set1")[4] 
+sample.gr$score<- log2(nrpos$rate) 
+
+pdf("test1.pdf",width=24,height = 5)
+lolliplot(sample.gr, features,xaxis = c(protein_inform$Start,protein_inform$End),yaxis = F, ylab = F,type="circle")
+dev.off()
